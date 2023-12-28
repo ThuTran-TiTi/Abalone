@@ -1,0 +1,144 @@
+---
+title: "Project1-452"
+author: "Thu Tran"
+date: "2023-04-05"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+library(tidyverse)
+library(rpart)
+library(randomForest)
+library(vip)
+```
+```{r}
+library(AppliedPredictiveModeling)
+data("abalone")
+```
+# Part 1: Exploratory Data Analysis
+```{r}
+glimpse (abalone)
+```
+```{r}
+# Summary statistics for the variables
+summary(abalone)
+```
+
+```{r}
+attach(abalone)
+# Scatter plots
+par(mfrow=c(2,4))
+plot(Rings~Type)
+plot(Rings~LongestShell)
+plot(Rings~Diameter)
+plot(Rings~Height)
+plot(Rings~WholeWeight)
+plot(Rings~ShuckedWeight)
+plot(Rings~VisceraWeight)
+plot(Rings~ShellWeight)
+
+
+```
+
+- It looks like Rings have a positive relationship with almost all predictors (LongestShell,Diameter,Height,WholeWeight,ShuckedWeight,VisceraWeight,ShellWeight) except the Type predictors. It's not sure whether they have a linear association or not since there is a fanning pattern appears in the scatter plots between Rings and LongestShell,Diameter,WholeWeight, ShuckedWeight, VisceraWeight, ShellWeight
+
+# Part 2: Cross-Validation
+## a. Split to trainning and test set
+```{r}
+set.seed(123)
+n<-nrow(abalone)
+train_index<-sample(1:n, round(n*0.7))
+abalone_train<-abalone[train_index,]
+abalone_test <-abalone[-train_index,]
+```
+## b.Fit a multilinear regression model
+```{r}
+fit_ml<-lm(Rings~ .,data=abalone_train)
+summary(fit_ml) # fix to just print the coefficient
+```
+## c. Fit a regresstion tree
+```{r}
+fit_tree<-rpart(Rings~ .,data= abalone_train, method= "anova")
+# Plot the tree
+par(cex=0.7,xpd=NA)
+plot(fit_tree, uniform= TRUE)
+text(fit_tree, use.n=TRUE)
+```
+
+## d. Fit model with randomForest
+```{r}
+fit_rf<-randomForest(Rings~ ., data= abalone_train, importance = TRUE)
+fit_rf
+```
+```{r}
+# Importance plot
+vip(fit_rf,geom ="point")
+```
+
+## e. Make prediction on the test set for multiple linear regression, regression tree, and random forests
+```{r}
+# Make prediction
+pred_ml<-predict(fit_ml, newdata = abalone_test)
+pred_rf <- predict(fit_rf, newdata = abalone_test)
+pred_tree <- predict(fit_tree, newdata = abalone_test)
+```
+```{r}
+# RMSE and R^2
+RMSE <- function(y, y_hat) {
+  sqrt(mean((y - y_hat)^2))
+}
+rmse<- c(RMSE(abalone_test$Rings,pred_ml),RMSE(abalone_test$Rings,pred_tree),
+         RMSE(abalone_test$Rings,pred_rf))
+r2<- c(cor(abalone_test$Rings, pred_ml)^2,cor(abalone_test$Rings, pred_tree)^2,
+       cor(abalone_test$Rings, pred_rf)^2)
+model<- c("Multiple Linear model","Regression Tree model","Random Forest model")
+predict_tb<-data.frame(model,rmse,r2)
+predict_tb
+```
+
+- According to the predict table, the random forest model has the lowest rmse and the highest r squared, which means that this seems to be the best model among the tree. Since the r squared of multiple linear model shows the lowest variability, it seems to be the worst model.
+
+
+## f. Make plots of the predicted versus actual values
+```{r}
+df_predict<-data.frame(
+  Actual = abalone_test$Rings,
+  Pred_ML=pred_ml,
+  Pred_RF=pred_rf,
+  Pred_TREE=pred_tree
+)
+```
+
+```{r}
+# Multiple linear
+ggplot(df_predict,aes(x=Actual, y= Pred_ML))+
+  geom_point()+
+  geom_abline(intercept = 0, slope = 1)+
+  xlab("Actual Rings")+ ylab("Predicted Salary")+
+  ggtitle("Multiple Linear Regression")+
+  xlim(0,30)+ylim(0,35)
+```
+```{r}
+# Regression tree
+ggplot(df_predict,aes(x=Actual, y= Pred_TREE))+
+  geom_point()+
+  geom_abline(intercept = 0, slope = 1)+
+  xlab("Actual Rings")+ ylab("Predicted Salary")+
+  ggtitle("Regression Tree")+
+  xlim(0,30)+ylim(0,35)
+```
+```{r}
+# Random Forest
+ggplot(df_predict,aes(x=Actual, y= Pred_RF))+
+  geom_point()+
+  geom_abline(intercept = 0, slope = 1)+
+  xlab("Actual Rings")+ ylab("Predicted Salary")+
+  ggtitle("Random Forest")+
+  xlim(0,30)+ylim(0,35)
+```
+
+Interpret:
+
+- As visualizing the plots about the predicted versus actual values of different method, the random forest is the best fit version since the points are closed to the regression line. From the regression tree from c, there are 11 internal nodes which can be seen in predicted regression tree plot as 11 horizontal value of predicted salary. In the multiple linear regression, we can see an outlier that not fit in, so multiple linear regression maybe not a good model for prediction in this case, and need to do some variable selection and transformation to improve this model. 
